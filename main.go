@@ -3,15 +3,16 @@ package main
 import (
 	"bufio"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
-	"github.com/tudurom/bw-git-helper/pinentry"
-	"github.com/gobwas/glob"
-	"gopkg.in/ini.v1"
 	"github.com/adrg/xdg"
+	"github.com/gobwas/glob"
+	"github.com/tudurom/bw-git-helper/pinentry"
+	"gopkg.in/ini.v1"
 )
 
 const MAX_PASSWORD_TRIALS = 3
@@ -182,14 +183,25 @@ func ifError(err interface{}) {
 }
 
 func main() {
-	if len(os.Args) != 2 || os.Args[1] != "get" {
-		// silently fail
+	cfgFlag := flag.String("c", "", "path to config file")
+	flag.Parse()
+
+	if len(flag.Args()) != 1 {
+		ifError("Expected an operation")
+	}
+	if flag.Args()[0] != "get" {
+		// fail silently
 		os.Exit(0)
 	}
 
-	configFilePath, err := xdg.ConfigFile("bw-git-helper/config.ini")
-	ifError(err)
-
+	var configFilePath string
+	if *cfgFlag != "" {
+		configFilePath = *cfgFlag
+	} else {
+		var err error
+		configFilePath, err = xdg.ConfigFile("bw-git-helper/config.ini")
+		ifError(err)
+	}
 	config, err := readConfig(configFilePath)
 	ifError(err)
 
