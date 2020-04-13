@@ -19,7 +19,7 @@ limitations under the License.
 // Package pinentry interfaces with the pinentry(1) command to securely
 // prompt the user for a password using whichever user interface the
 // user is currently using.
-package pinentry // import "perkeep.org/internal/pinentry"
+package pinentry
 
 import (
 	"bufio"
