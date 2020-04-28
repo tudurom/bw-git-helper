@@ -30,6 +30,7 @@ type Config struct {
 
 type ErrBW struct {
 	Message string
+	RetVal  int
 }
 
 func (e *ErrBW) Error() string {
@@ -132,7 +133,7 @@ func invokeBW(args ...string) (string, error) {
 	if err != nil {
 		var e *exec.ExitError
 		if errors.As(err, &e) {
-			return "", &ErrBW{Message: string(out)}
+			return "", &ErrBW{Message: string(out), RetVal: e.ExitCode()}
 		} else {
 			return "", err
 		}
@@ -233,9 +234,19 @@ func main() {
 
 	if config.UseUsername {
 		username, err := getUsername(firstMapping.Target, token)
-		ifError(err)
-
-		fmt.Printf("username=%s\n", username)
+		if err != nil {
+			var e *ErrBW
+			if errors.As(err, &e) {
+				// if it's 1, do nothing, since the username field might not exist
+				if e.RetVal != 1 {
+					ifError(err)
+				}
+			} else {
+				ifError(err)
+			}
+		} else {
+			fmt.Printf("username=%s\n", username)
+		}
 	}
 	pass, err := getPassword(firstMapping.Target, token)
 	ifError(err)
