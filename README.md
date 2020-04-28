@@ -72,6 +72,13 @@ section:
 pinentry=pinentry-gnome3
 ```
 
+If you don't want to have `bw-git-helper` handle your username, you can disable
+that functionality:
+``` ini
+[config]
+use_username=false
+```
+
 You can also use the `-c` flag to load the config file from an arbitrary path:
 
 ``` sh
