@@ -19,16 +19,18 @@ const MAX_PASSWORD_TRIALS = 3
 
 type Mapping struct {
 	Pattern glob.Glob
-	Target string
+	Target  string
 }
 
 type Config struct {
-	Pinentry string
-	Mappings []Mapping
+	Pinentry    string
+	UseUsername bool
+	Mappings    []Mapping
 }
 
 type ErrBW struct {
 	Message string
+	RetVal  int
 }
 
 func (e *ErrBW) Error() string {
@@ -41,7 +43,7 @@ type StdinData map[string]string
 
 func (sd StdinData) String() string {
 	ret := ""
-	for k, v := range(sd) {
+	for k, v := range sd {
 		ret += fmt.Sprintf("%s=%s\n", k, v)
 	}
 
@@ -50,8 +52,9 @@ func (sd StdinData) String() string {
 
 func readConfig(fp string) (Config, error) {
 	config := Config{
-		Pinentry: "pinentry",
-		Mappings: []Mapping{},
+		Pinentry:    "pinentry",
+		UseUsername: true,
+		Mappings:    []Mapping{},
 	}
 
 	cfg, err := ini.Load(fp)
@@ -65,8 +68,13 @@ func readConfig(fp string) (Config, error) {
 		if err == nil {
 			config.Pinentry = pinentryKey.String()
 		}
+		useUsernameKey, err := configSection.GetKey("use_username")
+		if err == nil {
+			config.UseUsername, err = useUsernameKey.Bool()
+			ifError(err)
+		}
 	}
-	for _, section := range(cfg.Sections()) {
+	for _, section := range cfg.Sections() {
 		key, err := section.GetKey("target")
 		if err == nil {
 			patternGlob, err := glob.Compile(section.Name())
@@ -75,11 +83,10 @@ func readConfig(fp string) (Config, error) {
 			}
 			config.Mappings = append(config.Mappings, Mapping{
 				Pattern: patternGlob,
-				Target: key.String(),
+				Target:  key.String(),
 			})
 		}
 	}
-
 
 	return config, nil
 }
@@ -89,7 +96,7 @@ func readInput() StdinData {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		split := strings.SplitN(scanner.Text(), "=", 2)
-		if (split[1] != "") {
+		if split[1] != "" {
 			stdinArgs[split[0]] = split[1]
 		}
 	}
@@ -101,7 +108,7 @@ func readPassword(host string, username string, protocol string, trial int, pine
 	if protocol != "" {
 		protocol += "://"
 	}
-	request := pinentry.Request{ Prompt: "Passphrase:" }
+	request := pinentry.Request{Prompt: "Passphrase:"}
 	if username != "" {
 		request.Desc = fmt.Sprintf("Requesting credentials for %s%s@%s", protocol, username, host)
 	} else {
@@ -126,7 +133,7 @@ func invokeBW(args ...string) (string, error) {
 	if err != nil {
 		var e *exec.ExitError
 		if errors.As(err, &e) {
-			return "", &ErrBW{Message: string(out)}
+			return "", &ErrBW{Message: string(out), RetVal: e.ExitCode()}
 		} else {
 			return "", err
 		}
@@ -136,6 +143,10 @@ func invokeBW(args ...string) (string, error) {
 
 func getSessionToken(password string) (string, error) {
 	return invokeBW("unlock", "--raw", password)
+}
+
+func getUsername(target string, token string) (string, error) {
+	return invokeBW("--session", token, "get", "username", target)
 }
 
 func getPassword(target string, token string) (string, error) {
@@ -152,7 +163,7 @@ func tryGetSessionToken(host string, data StdinData, config *Config) (string, er
 		token, err := getSessionToken(password)
 		if err != nil {
 			var e *ErrBW
-			if (errors.As(err, &e)) {
+			if errors.As(err, &e) {
 				continue
 			} else {
 				return "", err
@@ -164,9 +175,8 @@ func tryGetSessionToken(host string, data StdinData, config *Config) (string, er
 	return "", errors.New("too many requests")
 }
 
-
 func findFirstTarget(host string, mappings []Mapping) *Mapping {
-	for _, mapping := range(mappings) {
+	for _, mapping := range mappings {
 		if mapping.Pattern.Match(host) {
 			return &mapping
 		}
@@ -222,6 +232,22 @@ func main() {
 		ifError("no matching mapping")
 	}
 
+	if config.UseUsername {
+		username, err := getUsername(firstMapping.Target, token)
+		if err != nil {
+			var e *ErrBW
+			if errors.As(err, &e) {
+				// if it's 1, do nothing, since the username field might not exist
+				if e.RetVal != 1 {
+					ifError(err)
+				}
+			} else {
+				ifError(err)
+			}
+		} else {
+			fmt.Printf("username=%s\n", username)
+		}
+	}
 	pass, err := getPassword(firstMapping.Target, token)
 	ifError(err)
 
