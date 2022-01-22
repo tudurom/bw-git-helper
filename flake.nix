@@ -9,9 +9,16 @@
   outputs = inputs@{ self, nixpkgs, utils }:
     utils.lib.eachDefaultSystem (system:
       let pkgs = nixpkgs.legacyPackages.${system};
-      in {
-        defaultPackage = import ./default.nix { inherit pkgs; };
-        defaultShell = import ./shell.nix { inherit pkgs; };
+      in rec {
+        packages = utils.lib.flattenTree {
+          bw-git-helper = import ./default.nix { inherit pkgs; };
+        };
+        defaultPackage = packages.bw-git-helper;
+
+        apps.bw-git-helper = utils.lib.mkApp { drv = packages.bw-git-helper; };
+        defaultApp = apps.bw-git-helper;
+
+        devShell = import ./shell.nix { inherit pkgs; };
       }
     );
 }
